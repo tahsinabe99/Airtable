@@ -7,6 +7,17 @@ import { Menu, HelpCircle, Search, ChevronRight, Plus } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 
+// Define a set of soft pastel colors
+const COLORS = [
+  "bg-blue-600",
+  "bg-pink-500",
+  "bg-green-500",
+  "bg-yellow-400",
+  "bg-purple-500",
+  "bg-indigo-500",
+  "bg-red-500",
+];
+
 export default function DashboardPage() {
   const { data: session } = useSession();
   const { data: bases = [], isLoading } = api.base.getAll.useQuery();
@@ -110,18 +121,21 @@ export default function DashboardPage() {
               <p className="text-gray-600">No bases created yet.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {bases.map((base) => (
-                  <Link
-                    key={base.id}
-                    href={`/base/${base.id}`}
-                    className="bg-white rounded-xl p-4 shadow hover:shadow-md transition border border-gray-200"
-                  >
-                    <div className="w-10 h-10 bg-blue-600 text-white flex items-center justify-center font-bold rounded-md mb-2">
-                      Un
-                    </div>
-                    <h2 className="font-semibold text-gray-800">{base.name}</h2>
-                  </Link>
-                ))}
+                {bases.map((base, index) => {
+                  const color = COLORS[index % COLORS.length];
+                  return (
+                    <Link
+                      key={base.id}
+                      href={`/base/${base.id}`}
+                      className="bg-white rounded-xl p-4 shadow hover:shadow-md transition border border-gray-200"
+                    >
+                      <div className={`w-10 h-10 ${color} text-white flex items-center justify-center font-bold rounded-md mb-2`}>
+                        Un
+                      </div>
+                      <h2 className="font-semibold text-gray-800">{base.name}</h2>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </section>
