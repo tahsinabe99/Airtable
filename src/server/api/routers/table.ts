@@ -75,130 +75,46 @@ export const tableRouter = createTRPCRouter({
       });
     }),
 
-  getRowsPaginated: protectedProcedure
+    getRowsPaginated: protectedProcedure
     .input(
       z.object({
         tableId: z.string(),
         cursor: z.string().optional(),
-        limit: z.number().min(1).max(1000).default(100),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const rows = await ctx.db.row.findMany({
-        where: { tableId: input.tableId },
-        include: { cells: true },
-        orderBy: { createdAt: "asc" },
-        take: input.limit + 1, // Fetch one extra to check if there's more
-        ...(input.cursor && {
-          cursor: { id: input.cursor },
-          skip: 1,
-        }),
-      });
-
-      let nextCursor: string | undefined = undefined;
-      if (rows.length > input.limit) {
-        const next = rows.pop(); // Remove the extra
-        nextCursor = next?.id;
-      }
-
-      return {
-        rows,
-        nextCursor,
-      };
-    }),
-
-  addRows: protectedProcedure
-    .input(z.object({ tableId: z.string(), count: z.number().min(1).max(100_000) }))
-    .mutation(async ({ input, ctx }) => {
-      const columns = await ctx.db.column.findMany({
-        where: { tableId: input.tableId },
-      });
-
-      // Step 1: Insert rows (outside of transaction to avoid timeout)
-      await ctx.db.row.createMany({
-        data: Array.from({ length: input.count }).map(() => ({
-          tableId: input.tableId,
-        })),
-      });
-
-      // Step 2: Fetch the rows just created
-      const rows = await ctx.db.row.findMany({
-        where: { tableId: input.tableId },
-        orderBy: { createdAt: "desc" },
-        take: input.count,
-      });
-
-      // Step 3: Create cells
-      const cells = rows.flatMap((row) =>
-        columns.map((col) => ({
-          rowId: row.id,
-          columnId: col.id,
-          value:
-            col.name.toLowerCase().includes("email")
-              ? faker.internet.email()
-              : col.name.toLowerCase().includes("name")
-              ? faker.person.fullName()
-              : faker.lorem.word(),
-        }))
-      );
-
-      // Step 4: Insert cells in chunks
-      const chunkSize = 10_000;
-      for (let i = 0; i < cells.length; i += chunkSize) {
-        const chunk = cells.slice(i, i + chunkSize);
-        await ctx.db.cell.createMany({ data: chunk });
-      }
-
-      return rows.length;
-    }),
-
-    getFilteredRows: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string(),
-        query: z.string().min(1),
         limit: z.number().min(1).max(1000).default(50),
-        cursor: z.string().optional(),
+        search: z.string().optional(), // 🔍 added
       })
     )
     .query(async ({ ctx, input }) => {
       const rows = await ctx.db.row.findMany({
         where: {
           tableId: input.tableId,
-          cells: {
-            some: {
-              value: {
-                contains: input.query,
-                mode: "insensitive",
-              },
-            },
-          },
+          cells: input.search
+            ? {
+                some: {
+                  value: {
+                    contains: input.search,
+                    mode: "insensitive",
+                  },
+                },
+              }
+            : undefined,
         },
-        include: {
-          cells: true,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
+        include: { cells: true },
+        orderBy: { createdAt: "asc" },
         take: input.limit + 1,
         ...(input.cursor && {
-          cursor: {
-            id: input.cursor,
-          },
+          cursor: { id: input.cursor },
           skip: 1,
         }),
       });
-
+  
       let nextCursor: string | undefined = undefined;
       if (rows.length > input.limit) {
         const nextRow = rows.pop();
         nextCursor = nextRow?.id;
       }
-
-      return {
-        rows,
-        nextCursor,
-      };
+  
+      return { rows, nextCursor };
     }),
-
+  
 });
