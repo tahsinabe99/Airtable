@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Row" ALTER COLUMN "updatedAt" DROP DEFAULT;

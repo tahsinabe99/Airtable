@@ -3,13 +3,12 @@ import { faker } from "@faker-js/faker";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const tableRouter = createTRPCRouter({
-  // ✅ Create Table
   create: protectedProcedure
     .input(
       z.object({
         baseId: z.string().min(1),
         name: z.string().default("Untitled Table"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const table = await ctx.db.table.create({
@@ -57,35 +56,69 @@ export const tableRouter = createTRPCRouter({
     .input(z.object({ baseId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       return await ctx.db.table.findMany({
-        where: {
-          baseId: input.baseId,
-        },
-        include: {
-          columns: true,
-        },
+        where: { baseId: input.baseId },
+        include: { columns: true },
       });
     }),
 
-    getById: protectedProcedure
+  getById: protectedProcedure
     .input(z.object({ tableId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       return await ctx.db.table.findFirst({
         where: {
           id: input.tableId,
-          base: {
-            userId: ctx.session.user.id, // ✅ only allow access if the table's base belongs to the user
-          },
+          base: { userId: ctx.session.user.id },
         },
         include: {
           columns: true,
-          rows: {
-            include: {
-              cells: true,
-            },
-          },
+          rows: { include: { cells: true } },
         },
       });
     }),
+
+    addRows: protectedProcedure
+    .input(z.object({ tableId: z.string(), count: z.number().min(1).max(100_000) }))
+    .mutation(async ({ input, ctx }) => {
+      const columns = await ctx.db.column.findMany({
+        where: { tableId: input.tableId },
+      });
   
+      // Step 1: Insert rows (outside of transaction to avoid timeout)
+      await ctx.db.row.createMany({
+        data: Array.from({ length: input.count }).map(() => ({
+          tableId: input.tableId,
+        })),
+      });
+  
+      // Step 2: Fetch the rows just created
+      const rows = await ctx.db.row.findMany({
+        where: { tableId: input.tableId },
+        orderBy: { createdAt: "desc" },
+        take: input.count,
+      });
+  
+      // Step 3: Create cells
+      const cells = rows.flatMap((row) =>
+        columns.map((col) => ({
+          rowId: row.id,
+          columnId: col.id,
+          value:
+            col.name.toLowerCase().includes("email")
+              ? faker.internet.email()
+              : col.name.toLowerCase().includes("name")
+              ? faker.person.fullName()
+              : faker.lorem.word(),
+        }))
+      );
+  
+      // Step 4: Insert cells in chunks
+      const chunkSize = 10_000;
+      for (let i = 0; i < cells.length; i += chunkSize) {
+        const chunk = cells.slice(i, i + chunkSize);
+        await ctx.db.cell.createMany({ data: chunk });
+      }
+  
+      return rows.length;
+    }),
   
 });

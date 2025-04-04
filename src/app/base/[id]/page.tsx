@@ -1,14 +1,14 @@
+// src/app/base/[id]/page.tsx
 import { notFound } from "next/navigation";
 import { db } from "~/server/db";
 import { auth } from "~/server/auth";
 import BasePageWrapper from "./BasePageWrapper";
 
-export default async function BasePage(props: { params: { id: string } }) {
+export default async function BasePage({ params }: { params: { id: string } }) {
   const session = await auth();
   if (!session) return notFound();
 
-  const baseId = props.params.id;
-
+  const baseId = params.id;
   const base = await db.base.findFirst({
     where: {
       id: baseId,
