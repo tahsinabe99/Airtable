@@ -151,4 +151,54 @@ export const tableRouter = createTRPCRouter({
 
       return rows.length;
     }),
+
+    getFilteredRows: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string(),
+        query: z.string().min(1),
+        limit: z.number().min(1).max(1000).default(50),
+        cursor: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.db.row.findMany({
+        where: {
+          tableId: input.tableId,
+          cells: {
+            some: {
+              value: {
+                contains: input.query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        include: {
+          cells: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+        take: input.limit + 1,
+        ...(input.cursor && {
+          cursor: {
+            id: input.cursor,
+          },
+          skip: 1,
+        }),
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (rows.length > input.limit) {
+        const nextRow = rows.pop();
+        nextCursor = nextRow?.id;
+      }
+
+      return {
+        rows,
+        nextCursor,
+      };
+    }),
+
 });

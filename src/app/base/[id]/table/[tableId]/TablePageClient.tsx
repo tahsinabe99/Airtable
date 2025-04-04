@@ -8,138 +8,149 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 export default function TablePageClient() {
   const params = useParams();
   const tableId = params?.tableId as string;
-  const [rowCount, setRowCount] = useState(100000);
+  const parentRef = useRef<HTMLDivElement | null>(null);
+
+  const [rowCount, setRowCount] = useState(100_000);
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
 
   const utils = api.useUtils();
 
-  const { data: tableMeta, isLoading: isTableLoading, isError } =
-    api.table.getById.useQuery(
-      { tableId },
-      { enabled: !!tableId }
-    );
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading: isRowsLoading,
-  } = api.table.getRowsPaginated.useInfiniteQuery(
-    {
-      tableId,
-      limit: 100,
-    },
-    {
-      getNextPageParam: (lastPage) => lastPage.nextCursor,
-      enabled: !!tableId,
-    }
+  const { data: tableData, isLoading: tableLoading } = api.table.getById.useQuery(
+    { tableId },
+    { enabled: !!tableId }
   );
 
   const addRows = api.table.addRows.useMutation({
     onSuccess: () => {
       utils.table.getById.invalidate({ tableId });
       utils.table.getRowsPaginated.invalidate();
+      utils.table.getFilteredRows.invalidate();
     },
   });
 
-  const allRows = data?.pages.flatMap((page) => page.rows) ?? [];
+  // Infinite scroll (no search)
+  const {
+    data: normalData,
+    fetchNextPage: fetchNextPageNormal,
+    hasNextPage: hasNextNormal,
+    isFetching: fetchingNormal,
+  } = api.table.getRowsPaginated.useInfiniteQuery(
+    { tableId, limit: 100 },
+    {
+      getNextPageParam: (last) => last.nextCursor,
+      enabled: !!tableId && !query,
+    }
+  );
 
-  const parentRef = useRef<HTMLDivElement>(null);
-  const rowVirtualizer = useVirtualizer({
-    count: hasNextPage ? allRows.length + 1 : allRows.length,
+  // Search mode
+  const {
+    data: searchData,
+    fetchNextPage: fetchNextPageSearch,
+    hasNextPage: hasNextSearch,
+    isFetching: fetchingSearch,
+  } = api.table.getFilteredRows.useInfiniteQuery(
+    { tableId, query, limit: 100 },
+    {
+      getNextPageParam: (last) => last.nextCursor,
+      enabled: !!tableId && !!query,
+    }
+  );
+
+  const data = query
+    ? searchData?.pages.flatMap((p) => p.rows) ?? []
+    : normalData?.pages.flatMap((p) => p.rows) ?? [];
+
+  const hasNextPage = query ? hasNextSearch : hasNextNormal;
+  const fetchNextPage = query ? fetchNextPageSearch : fetchNextPageNormal;
+  const isFetching = query ? fetchingSearch : fetchingNormal;
+
+  const virtualizer = useVirtualizer({
+    count: hasNextPage ? data.length + 1 : data.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 48,
+    estimateSize: () => 40,
     overscan: 10,
   });
 
+  const items = virtualizer.getVirtualItems();
+  const totalHeight = virtualizer.getTotalSize();
+
   useEffect(() => {
-    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
-    if (!lastItem) return;
-    if (
-      lastItem.index >= allRows.length - 1 &&
-      hasNextPage &&
-      !isFetchingNextPage
-    ) {
+    const last = items[items.length - 1];
+    if (!last) return;
+    if (last.index >= data.length - 1 && hasNextPage && !isFetching) {
       fetchNextPage();
     }
-  }, [rowVirtualizer.getVirtualItems(), hasNextPage, isFetchingNextPage]);
+  }, [items, data.length, hasNextPage, isFetching, fetchNextPage]);
 
-  if (isTableLoading || isRowsLoading)
-    return <p className="p-4 text-gray-600">Loading table...</p>;
-  if (isError || !tableMeta)
-    return <p className="p-4 text-red-500">Failed to load table</p>;
-
-  const columnMap = Object.fromEntries(
-    tableMeta.columns.map((col) => [col.id, col.name])
-  );
-
-  const columns = ["ID", ...tableMeta.columns.map((col) => col.name)];
+  if (tableLoading || !tableData) return <p className="p-4">Loading table...</p>;
 
   return (
     <div className="space-y-4 p-4">
-      <button
-        onClick={() => addRows.mutate({ tableId, count: rowCount })}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-      >
-        Add {rowCount.toLocaleString()} Rows
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => addRows.mutate({ tableId, count: rowCount })}
+          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+        >
+          Add {rowCount.toLocaleString()} Rows
+        </button>
 
-      <div className="border rounded-md overflow-auto">
-        <div className="bg-gray-50 font-semibold text-sm text-gray-700 flex border-b">
-          {columns.map((col) => (
-            <div key={col} className="p-2 min-w-[150px]">
-              {col}
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search..."
+          className="ml-auto rounded border px-2 py-1 text-sm"
+          onKeyDown={(e) => e.key === "Enter" && setQuery(search)}
+        />
+        <button
+          onClick={() => setQuery(search)}
+          className="rounded bg-gray-200 px-3 py-1 text-sm"
+        >
+          Search
+        </button>
+      </div>
+
+      <div
+        ref={parentRef}
+        className="h-[600px] overflow-auto border rounded-md bg-white"
+      >
+        <div className="flex bg-gray-50 font-semibold text-sm border-b">
+          {tableData.columns.map((col) => (
+            <div key={col.id} className="flex-1 px-3 py-2">
+              {col.name}
             </div>
           ))}
         </div>
 
-        <div
-          ref={parentRef}
-          className="relative h-[600px] overflow-y-auto border-t"
-        >
-          <div
-            style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const row = allRows[virtualRow.index];
+        <div style={{ height: totalHeight, position: "relative" }}>
+          {items.map((vRow) => {
+            const row = data[vRow.index];
+            if (!row) return null;
 
-              if (!row) {
-                return (
-                  <div
-                    key={virtualRow.key}
-                    ref={virtualRow.measureElement}
-                    className="absolute top-0 left-0 right-0 px-4 py-2 text-gray-400 text-sm"
-                    style={{
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    {isFetchingNextPage ? "Loading more..." : "No more rows"}
+            const cellMap = Object.fromEntries(
+              row.cells.map((cell) => [cell.columnId, cell.value])
+            );
+
+            return (
+              <div
+                key={row.id}
+                className="flex border-b text-sm"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vRow.start}px)`,
+                }}
+              >
+                {tableData.columns.map((col) => (
+                  <div key={col.id} className="flex-1 px-3 py-2 truncate">
+                    {cellMap[col.id]}
                   </div>
-                );
-              }
-
-              return (
-                <div
-                  key={virtualRow.key}
-                  ref={virtualRow.measureElement}
-                  className="flex border-b text-sm"
-                  style={{
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  <div className="p-2 min-w-[150px] text-gray-500">{row.id}</div>
-                  {tableMeta.columns.map((col) => {
-                    const cell = row.cells.find((c) => c.columnId === col.id);
-                    return (
-                      <div key={col.id} className="p-2 min-w-[150px]">
-                        {cell?.value}
-                      </div>
-                    );
-                  })}ç
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
