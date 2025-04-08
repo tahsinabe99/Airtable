@@ -15,10 +15,17 @@ export default function TablePageClient() {
   const params = useParams();
   const tableId = params?.tableId as string;
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const [editingCellId, setEditingCellId] = useState<string | null>(null);
+
 
   const [rowCount, setRowCount] = useState(100_000);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [editingCell, setEditingCell] = useState<{
+    rowId: string;
+    columnId: string;
+  } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   const utils = api.useUtils();
 
@@ -34,6 +41,21 @@ export default function TablePageClient() {
       utils.table.getFilteredRows.invalidate();
     },
   });
+
+  const updateCell = api.table.updateCell.useMutation({
+    onSuccess: () => {
+      utils.table.getById.invalidate({ tableId });
+      utils.table.getRowsPaginated.invalidate();
+    },
+  });
+
+  const addColumn = api.table.addColumn.useMutation({
+    onSuccess: () => {
+      utils.table.getById.invalidate({ tableId });
+    },
+  });
+  
+  
 
   const {
     data: normalData,
@@ -131,9 +153,7 @@ export default function TablePageClient() {
           <button className="px-2 text-lg hover:shadow cursor-pointer">＋</button>
         </div>
         <div className="flex items-center gap-4">
-          <button className="text-sm cursor-pointer hover:underline">
-            Extensions
-          </button>
+          <button className="text-sm cursor-pointer hover:underline">Extensions</button>
           <button className="text-sm cursor-pointer hover:underline">Tools</button>
         </div>
       </div>
@@ -164,7 +184,6 @@ export default function TablePageClient() {
             </button>
           ))}
         </div>
-
         <div className="flex items-center gap-1">
           <input
             value={search}
@@ -185,16 +204,15 @@ export default function TablePageClient() {
       {/* Main Content: Sidebar + Table */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-60 border-r bg-white p-2 text-sm">
+        <aside className="w-60 border-r border-gray-300 bg-white p-2 text-sm">
+
           <div className="p-2">
             <input
               type="text"
               placeholder="Find a view"
-              className="w-full rounded border px-2 py-1 text-sm"
+              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
             />
           </div>
-
-          
 
           <div className="p-2">
             <div className="font-semibold mb-2 text-blue-700 bg-blue-100 rounded px-2 py-1 flex items-center justify-between">
@@ -202,62 +220,75 @@ export default function TablePageClient() {
               <span className="text-sm">✔</span>
             </div>
           </div>
-          <div className="h-105" />
 
+          <div className="h-75" />
 
-          <hr className="my-2" />
+          <hr className="my-2 border-gray-300" />
 
-          
-          
           <div className="p-2 mt-auto">
-  <div className="font-semibold mb-2">Create...</div>
-  <ul className="space-y-1">
-    {[
-      ["▦ Grid"],
-      ["🗓 Calendar", "text-red-600"],
-      ["🖼 Gallery", "text-pink-600"],
-      ["📊 Kanban", "text-green-600"],
-      ["🕒 Timeline", "text-indigo-600", "Team"],
-      ["📋 List"],
-      ["🗂 Gantt", "text-teal-600", "Team"],
-      ["📁 Section", "", "Team"],
-    ].map(([label, color = "", badge]) => (
-      <li key={label} className="flex justify-between items-center">
-        <span className={color}>{label}</span>
-        <div className="flex items-center gap-1">
-          {badge && (
-            <span className="bg-blue-100 text-blue-700 text-xs rounded px-1">
-              {badge}
-            </span>
-          )}
-          <span className="text-gray-400">＋</span>
-        </div>
-      </li>
-    ))}
-  </ul>
+            <div className="font-semibold mb-2">Create...</div>
+            <ul className="space-y-1">
+              {[
+                ["▦ Grid"],
+                ["🗓 Calendar", "text-red-600"],
+                ["🖼 Gallery", "text-pink-600"],
+                ["📊 Kanban", "text-green-600"],
+                ["🕒 Timeline", "text-indigo-600", "Team"],
+                ["📋 List"],
+                ["🗂 Gantt", "text-teal-600", "Team"],
+                ["📁 Section", "", "Team"],
+              ].map(([label, color = "", badge]) => (
+                <li key={label} className="flex justify-between items-center">
+                  <span className={color}>{label}</span>
+                  <div className="flex items-center gap-1">
+                    {badge && (
+                      <span className="bg-blue-100 text-blue-700 text-xs rounded px-1">
+                        {badge}
+                      </span>
+                    )}
+                    <span className="text-gray-400">＋</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
 
-  <hr className="my-2" />
+            <hr className="my-2 border-gray-300" />
 
-  <div className="flex justify-between items-center mt-1">
-    <span className="text-pink-600">✨ Form</span>
-    <span className="text-gray-400">＋</span>
-  </div>
-</div>
-
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-pink-600">✨ Form</span>
+              <span className="text-gray-400">＋</span>
+            </div>
+          </div>
         </aside>
 
         {/* Table Content */}
-        <div
-          ref={parentRef}
-          className="flex-1 overflow-auto border-t bg-white"
-        >
-          <div className="flex bg-gray-50 font-semibold text-sm border-b sticky top-0 z-10">
-            {tableData.columns.map((col) => (
-              <div key={col.id} className="flex-1 px-3 py-2">
-                {col.name}
-              </div>
-            ))}
+        <div ref={parentRef} className="flex-1 overflow-auto border-t border-gray-200 bg-white">
+        <div className="flex bg-gray-100 text-black font-semibold text-sm border-b border-gray-300 sticky top-0 z-10">
+        {tableData.columns.map((col) => (
+          <div
+            key={col.id}
+            className="flex-1 px-3 py-2 border-r border-gray-300 last:border-r-0 bg-gray-100 text-black"
+          >
+            {col.name}
           </div>
+        ))}
+
+        {/* + Column Button */}
+        <div
+          onClick={() => {
+            const name = prompt("Enter column name:");
+            if (name) {
+              addColumn.mutate({ tableId, name });
+            }
+          }}
+          className="w-10 px-3 py-2 text-lg text-gray-500 border-r border-gray-300 cursor-pointer hover:bg-gray-200 bg-gray-100 flex items-center justify-center"
+        >
+          ＋
+        </div>
+
+        </div>
+
+
 
           <div style={{ height: totalHeight, position: "relative" }}>
             {items.map((vRow) => {
@@ -271,7 +302,7 @@ export default function TablePageClient() {
               return (
                 <div
                   key={row.id}
-                  className="flex border-b text-sm"
+                  className="flex border-b border-gray-300 text-sm"
                   style={{
                     position: "absolute",
                     top: 0,
@@ -280,11 +311,57 @@ export default function TablePageClient() {
                     transform: `translateY(${vRow.start}px)`,
                   }}
                 >
-                  {tableData.columns.map((col) => (
-                    <div key={col.id} className="flex-1 px-3 py-2 truncate">
-                      {cellMap[col.id]}
-                    </div>
-                  ))}
+              {tableData.columns.map((col, index) => {
+                const isEditing =
+                  editingCell?.rowId === row.id && editingCell?.columnId === col.id;
+
+                return (
+                  <div
+                    key={col.id}
+                    className={`flex-1 px-3 py-2 truncate hover:bg-gray-100 cursor-pointer border-r ${
+                      index === tableData.columns.length - 1 ? "border-r-0" : "border-gray-200"
+                    }`}
+                    onDoubleClick={() => {
+                      setEditingCell({ rowId: row.id, columnId: col.id });
+                      setEditingValue(cellMap[col.id] ?? "");
+                    }}
+                  >
+                    {isEditing ? (
+                      <input
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onBlur={() => {
+                          if (editingCell && editingValue.trim() !== "") {
+                            updateCell.mutate({
+                              rowId: editingCell.rowId,
+                              columnId: editingCell.columnId,
+                              value: editingValue,
+                            });
+                          }
+                          setEditingCell(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && editingCell) {
+                            updateCell.mutate({
+                              rowId: editingCell.rowId,
+                              columnId: editingCell.columnId,
+                              value: editingValue,
+                            });
+                            setEditingCell(null);
+                          } else if (e.key === "Escape") {
+                            setEditingCell(null);
+                          }
+                        }}
+                        autoFocus
+                        className="w-full border rounded px-2 py-1 text-sm"
+                      />
+                    ) : (
+                      cellMap[col.id]
+                    )}
+                  </div>
+                );
+              })}
+
                 </div>
               );
             })}

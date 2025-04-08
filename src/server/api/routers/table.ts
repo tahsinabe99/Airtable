@@ -201,4 +201,55 @@ export const tableRouter = createTRPCRouter({
       };
     }),
 
+  updateCell: protectedProcedure
+    .input(z.object({
+      rowId: z.string(),
+      columnId: z.string(),
+      value: z.string(),
+    }))
+  .mutation(async ({ ctx, input }) => {
+    return await ctx.db.cell.updateMany({
+      where: {
+        rowId: input.rowId,
+        columnId: input.columnId,
+      },
+      data: {
+        value: input.value,
+      },
+    });
+  }),
+
+  addColumn: protectedProcedure
+  .input(
+    z.object({
+      tableId: z.string(),
+      name: z.string().min(1),
+      type: z.enum(["TEXT", "NUMBER"]).default("TEXT"),
+    })
+  )
+  .mutation(async ({ ctx, input }) => {
+    const column = await ctx.db.column.create({
+      data: {
+        tableId: input.tableId,
+        name: input.name,
+        type: input.type,
+      },
+    });
+
+    const rows = await ctx.db.row.findMany({
+      where: { tableId: input.tableId },
+    });
+
+    await ctx.db.cell.createMany({
+      data: rows.map((row) => ({
+        rowId: row.id,
+        columnId: column.id,
+        value: "",
+      })),
+    });
+
+    return column;
+  }),
+
+    
 });
