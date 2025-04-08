@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRouter } from "next/navigation";
+
 import {
   FaUndo,
   FaQuestionCircle,
@@ -16,6 +18,7 @@ export default function TablePageClient() {
   const tableId = params?.tableId as string;
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  
 
 
   const [rowCount, setRowCount] = useState(100_000);
@@ -52,8 +55,10 @@ export default function TablePageClient() {
   const addColumn = api.table.addColumn.useMutation({
     onSuccess: () => {
       utils.table.getById.invalidate({ tableId });
+      router.refresh(); // re-fetch the data and trigger a re-render
     },
   });
+  
   
   
 
@@ -263,33 +268,39 @@ export default function TablePageClient() {
 
         {/* Table Content */}
         <div ref={parentRef} className="flex-1 overflow-auto border-t border-gray-200 bg-white">
-        <div className="flex bg-gray-100 text-black font-semibold text-sm border-b border-gray-300 sticky top-0 z-10">
-        {tableData.columns.map((col) => (
-          <div
-            key={col.id}
-            className="flex-1 px-3 py-2 border-r border-gray-300 last:border-r-0 bg-gray-100 text-black"
-          >
-            {col.name}
-          </div>
-        ))}
-
-        {/* + Column Button */}
+        {/*From here*/}
         <div
-          onClick={() => {
-            const name = prompt("Enter column name:");
-            if (name) {
-              addColumn.mutate({ tableId, name });
-            }
+          className="grid sticky top-0 z-10 bg-gray-100 text-black font-semibold text-sm border-b border-gray-300"
+          style={{
+            gridTemplateColumns: `repeat(${tableData.columns.length + 1}, minmax(150px, 1fr))`,
           }}
-          className="w-10 px-3 py-2 text-lg text-gray-500 border-r border-gray-300 cursor-pointer hover:bg-gray-200 bg-gray-100 flex items-center justify-center"
         >
-          ＋
+          {tableData.columns.map((col) => (
+            <div
+              key={col.id}
+              className="px-3 py-2 border-r border-gray-300"
+            >
+              {col.name}
+            </div>
+          ))}
+          <div
+            onClick={() => {
+              const name = prompt("Enter column name:");
+              if (name) {
+                addColumn.mutate({ tableId, name });
+              }
+            }}
+            className="px-3 py-2 text-lg text-gray-500 border-r border-gray-300 cursor-pointer hover:bg-gray-200 flex items-center justify-center"
+          >
+            ＋
+          </div>
         </div>
+{/*This*/}
 
-        </div>
+        
 
 
-
+          {/*From here*/}
           <div style={{ height: totalHeight, position: "relative" }}>
             {items.map((vRow) => {
               const row = data[vRow.index];
@@ -300,17 +311,19 @@ export default function TablePageClient() {
               );
 
               return (
-                <div
-                  key={row.id}
-                  className="flex border-b border-gray-300 text-sm"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${vRow.start}px)`,
-                  }}
-                >
+          <div
+            key={row.id}
+            className="grid border-b border-gray-300 text-sm"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${vRow.start}px)`,
+              gridTemplateColumns: `repeat(${tableData.columns.length + 1}, minmax(150px, 1fr))`,
+            }}
+          >
+
               {tableData.columns.map((col, index) => {
                 const isEditing =
                   editingCell?.rowId === row.id && editingCell?.columnId === col.id;
